@@ -1,0 +1,54 @@
+# ============================================================
+#  إعدادات بوت الأخبار — عدّل هذا الملف كما تشاء
+# ============================================================
+
+# --- المصادر الرسمية: تُنشر تلقائيًا بدون موافقة ---
+# التطبيق يقبل الخبر فقط إذا كان رابطه من أحد هذه النطاقات.
+official_sources:
+  - domain: aps.dz
+    name: وكالة الأنباء الجزائرية
+  - domain: el-mouradia.dz
+    name: رئاسة الجمهورية
+  - domain: premier-ministre.gov.dz
+    name: الوزارة الأولى
+  - domain: mdn.dz
+    name: وزارة الدفاع الوطني
+  - domain: radioalgerie.dz
+    name: الإذاعة الجزائرية
+
+# إن وجدت رابط RSS مباشرًا لمصدر رسمي أضفه هنا (اختياري):
+# direct_feeds:
+#   - url: https://example.dz/rss.xml
+#     name: اسم المصدر
+direct_feeds: []
+
+# --- الترندات: لا تُنشر إلا بعد موافقتك على تيليغرام ---
+trends:
+  enabled: true
+  geo: DZ
+  max_per_run: 3
+  # مواقع إعلامية معروفة: تظهر بعلامة ✅ في رسالة الموافقة، وغيرها بعلامة ⚠️
+  known_media:
+    - aps.dz
+    - radioalgerie.dz
+    - echoroukonline.com
+    - ennaharonline.com
+    - elkhabar.com
+    - elbilad.net
+    - dzair-tube.dz
+    - aljazeera.net
+    - kooora.com
+
+# --- قواعد النشر ---
+posting:
+  arabic_only: true            # تجاهل الأخبار غير العربية
+  max_age_hours: 3             # تجاهل الأخبار الأقدم من هذا
+  max_posts_per_run: 2         # أقصى عدد منشورات تلقائية في كل تشغيل
+  max_posts_per_day: 20        # حد يومي لتجنب إغراق الصفحة
+  min_gap_minutes: 20          # أقل مدة بين منشورين تلقائيين
+  hashtags: "#الجزائر #أخبار_الجزائر"
+
+# --- الصياغة بالذكاء الاصطناعي (اختياري، يحتاج ANTHROPIC_API_KEY) ---
+ai:
+  enabled: true
+  model: claude-sonnet-5-5
