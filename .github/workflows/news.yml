@@ -2,7 +2,7 @@ name: بوت الأخبار
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # كل 30 دقيقة
+    - cron: "7,37 * * * *"   # كل 30 دقيقة (في الدقيقة 7 و37 لتجنب ازدحام GitHub)
   workflow_dispatch: {}       # زر تشغيل يدوي من تبويب Actions
 
 permissions:
