@@ -14,11 +14,11 @@ FONT_MED = ROOT / "fonts" / "Tajawal-Bold.ttf"
 LOGO = ROOT / "assets" / "logo.png"  # اختياري: ضع شعار الصفحة هنا
 
 SIZE = 1080
-GREEN_TOP = (0, 98, 51)      # أخضر العلم
-GREEN_BOT = (0, 48, 26)
-RED = (210, 16, 52)          # أحمر العلم
+TOP = (178, 52, 0)           # برتقالي غامق
+BOTTOM = (255, 196, 0)       # أصفر
+DARK = (60, 22, 0)           # بني غامق للتفاصيل
 WHITE = (255, 255, 255)
-SOFT = (210, 230, 218)
+SHADOW = (90, 28, 0)
 
 HAS_RAQM = features.check("raqm")
 AR_MONTHS = ["جانفي", "فيفري", "مارس", "أفريل", "ماي", "جوان", "جويلية",
@@ -79,13 +79,13 @@ def make_card(headline: str, source: str, page_name: str, when: datetime | None 
         # بدون مكتبة raqm تظهر الحروف العربية مقطّعة، فالأفضل النشر بدون بطاقة
         raise RuntimeError("مكتبة raqm غير متوفرة لتشكيل الحروف العربية")
     when = (when or datetime.now(timezone.utc)).astimezone(timezone(timedelta(hours=1)))
-    img = Image.new("RGB", (SIZE, SIZE), GREEN_BOT)
+    img = Image.new("RGB", (SIZE, SIZE), BOTTOM)
     draw = ImageDraw.Draw(img)
 
-    # خلفية متدرجة
+    # خلفية متدرجة: برتقالي غامق في الأعلى إلى أصفر في الأسفل
     for y in range(SIZE):
-        t = y / SIZE
-        c = tuple(int(GREEN_TOP[i] * (1 - t) + GREEN_BOT[i] * t) for i in range(3))
+        t = (y / SIZE) ** 1.3
+        c = tuple(int(TOP[i] * (1 - t) + BOTTOM[i] * t) for i in range(3))
         draw.line([(0, y), (SIZE, y)], fill=c)
 
     margin = 80
@@ -104,28 +104,28 @@ def make_card(headline: str, source: str, page_name: str, when: datetime | None 
     tag_font = ImageFont.truetype(str(FONT_MED), 32)
     tag = "أخبار الجزائر"
     tw = _width(draw, tag, tag_font)
-    draw.rounded_rectangle((right - tw - 48, 190, right, 250), radius=30, fill=RED)
-    _draw_rtl(draw, right - 24, 202, tag, tag_font, WHITE)
+    draw.rounded_rectangle((right - tw - 48, 190, right, 250), radius=30, fill=DARK)
+    _draw_rtl(draw, right - 24, 202, tag, tag_font, BOTTOM)
 
     # العنوان
     top, bottom = 300, 850
     font, lines, lh = _fit_headline(draw, headline, SIZE - 2 * margin, bottom - top)
     y = top + ((bottom - top) - len(lines) * lh) // 2
     for line in lines:
+        w = _width(draw, line, font)
+        draw.text((right - w + 3, y + 4), line, font=font, fill=SHADOW, **_kw())
         _draw_rtl(draw, right, y, line, font, WHITE)
         y += lh
 
     # خط أحمر فاصل ثم المصدر والتاريخ
-    draw.rectangle((margin, 880, right, 886), fill=RED)
+    draw.rectangle((margin, 880, right, 886), fill=DARK)
     small = ImageFont.truetype(str(FONT_MED), 34)
-    _draw_rtl(draw, right, 910, f"المصدر: {source}", small, SOFT)
+    _draw_rtl(draw, right, 910, f"المصدر: {source}", small, DARK)
     date_txt = _ar_date(when)
-    draw.text((margin, 910), _shape(date_txt), font=small, fill=SOFT, **_kw())
+    draw.text((margin, 910), _shape(date_txt), font=small, fill=DARK, **_kw())
 
-    # شريط سفلي بألوان العلم
-    draw.rectangle((0, SIZE - 22, SIZE // 2, SIZE), fill=GREEN_TOP)
-    draw.rectangle((SIZE // 2, SIZE - 22, SIZE, SIZE), fill=WHITE)
-    draw.rectangle((SIZE // 2 - 60, SIZE - 22, SIZE // 2 + 60, SIZE), fill=RED)
+    # شريط سفلي
+    draw.rectangle((0, SIZE - 22, SIZE, SIZE), fill=DARK)
 
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=92)
