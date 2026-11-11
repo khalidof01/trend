@@ -199,6 +199,7 @@ def resolve_url(link: str) -> str:
         r = gnewsdecoder(link, interval=1)
         if r.get("status") and r.get("decoded_url"):
             return r["decoded_url"]
+        log(f"  ! فك الرابط لم ينجح: {str(r.get('message'))[:200]}")
     except Exception as e:
         log(f"  ! تعذر فك رابط Google News: {e}")
     return link
