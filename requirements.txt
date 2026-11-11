@@ -1,5 +1,4 @@
 requests>=2.31
 PyYAML>=6.0
 Pillow>=10.0
-googlenewsdecoder>=0.2
 trafilatura>=2.0

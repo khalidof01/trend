@@ -195,11 +195,24 @@ def resolve_url(link: str) -> str:
     if "news.google.com" not in link:
         return link
     try:
-        from googlenewsdecoder import gnewsdecoder
-        r = gnewsdecoder(link, interval=1)
-        if r.get("status") and r.get("decoded_url"):
-            return r["decoded_url"]
-        log(f"  ! فك الرابط لم ينجح: {str(r.get('message'))[:200]}")
+        art_id = urllib.parse.urlparse(link).path.rstrip("/").split("/")[-1]
+        page = requests.get(f"https://news.google.com/articles/{art_id}", headers=UA, timeout=20)
+        sg = re.search(r'data-n-a-sg="([^"]+)"', page.text)
+        ts = re.search(r'data-n-a-ts="([^"]+)"', page.text)
+        if not (sg and ts):
+            log(f"  ! فك الرابط: لم أجد التوقيع (HTTP {page.status_code})")
+            return link
+        inner = json.dumps(["garturlreq", [["X", "X", ["X", "X"], None, None, 1, 1, "US:en", None, 1,
+                                            None, None, None, None, None, 0, 1], "X", "X", 1, [1, 1, 1],
+                                           1, 1, None, 0, 0, None, 0], art_id, int(ts.group(1)), sg.group(1)])
+        payload = json.dumps([[["Fbv4je", inner, None, "generic"]]])
+        r = requests.post("https://news.google.com/_/DotsSplashUi/data/batchexecute",
+                          data={"f.req": payload}, timeout=20,
+                          headers={**UA, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"})
+        m = re.search(r'\[\\"garturlres\\",\\"(.*?)\\"', r.text)
+        if m:
+            return m.group(1).encode().decode("unicode_escape")
+        log(f"  ! فك الرابط: رد غير متوقع (HTTP {r.status_code}) {r.text[:150]!r}")
     except Exception as e:
         log(f"  ! تعذر فك رابط Google News: {e}")
     return link
