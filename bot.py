@@ -181,8 +181,9 @@ def collect_official(cfg: dict) -> list[dict]:
                 continue
             if it["date"] and NOW - it["date"] > max_age:
                 continue
+            raw = title
             title = clarify_places(title, cfg.get("place_notes"))
-            out.append({"title": title, "link": it["link"], "source": src["name"],
+            out.append({"raw": raw, "title": title, "link": it["link"], "source": src["name"],
                         "date": it["date"]})
     out.sort(key=lambda x: x["date"] or NOW)  # الأقدم أولًا
     return out
@@ -271,7 +272,7 @@ def run_official(cfg: dict, state: dict):
     post_cfg = cfg["posting"]
     posted = 0
     for item in collect_official(cfg):
-        fp = fingerprint(item["title"])
+        fp = fingerprint(item["raw"])  # البصمة على العنوان الأصلي
         if fp in state["seen"]:
             continue
         if not can_auto_post(cfg, state, posted):
