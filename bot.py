@@ -105,6 +105,27 @@ def is_algerian(title: str, keywords: list[str]) -> bool:
     return any(normalize_ar(k) in nt for k in keywords)
 
 
+COUNTRY_OF = {"التركية": "تركيا", "السويسرية": "سويسرا", "النمساوية": "النمسا",
+              "البلجيكية": "بلجيكا", "الهولندية": "هولندا", "الفرنسية": "فرنسا",
+              "الروسية": "روسيا", "الأذربيجانية": "أذربيجان", "الكازاخستانية": "كازاخستان",
+              "النيجرية": "النيجر", "المالية": "مالي", "الموريتانية": "موريتانيا",
+              "السنغالية": "السنغال", "النيجيرية": "نيجيريا", "الإثيوبية": "إثيوبيا",
+              "الكينية": "كينيا", "الرواندية": "رواندا", "الأنغولية": "أنغولا",
+              "الموزمبيقية": "الموزمبيق", "المصرية": "مصر", "السعودية": "السعودية"}
+
+
+def clarify_places(title: str, notes: dict) -> str:
+    """يضيف اسم البلد بعد المدن الأجنبية: «بأنطاليا» -> «بأنطاليا التركية»."""
+    for city, adj in (notes or {}).items():
+        country = COUNTRY_OF.get(adj, "")
+        nt = normalize_ar(title)
+        if normalize_ar(adj) in nt or (country and normalize_ar(country) in nt):
+            continue
+        pattern = "".join("[اأإآ]" if ch in "اأإآ" else re.escape(ch) for ch in city)
+        title, n = re.subn(rf"({pattern})(?![\u0600-\u06FF])", rf"\1 {adj}", title, count=1)
+    return title
+
+
 # ---------------------------------------------------------------- الأخبار الرسمية
 def google_news_url(domain: str) -> str:
     q = urllib.parse.quote(f"site:{domain} when:1d")
@@ -160,6 +181,7 @@ def collect_official(cfg: dict) -> list[dict]:
                 continue
             if it["date"] and NOW - it["date"] > max_age:
                 continue
+            title = clarify_places(title, cfg.get("place_notes"))
             out.append({"title": title, "link": it["link"], "source": src["name"],
                         "date": it["date"]})
     out.sort(key=lambda x: x["date"] or NOW)  # الأقدم أولًا
