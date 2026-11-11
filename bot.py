@@ -26,7 +26,7 @@ CONFIG_FILE = ROOT / "config.yaml"
 
 FB_PAGE_ID = os.getenv("FB_PAGE_ID", "")
 FB_PAGE_TOKEN = os.getenv("FB_PAGE_TOKEN", "")
-FB_API_VERSION = os.getenv("FB_API_VERSION", "v26.0")
+FB_API_VERSION = os.getenv("FB_API_VERSION", "v27.0")
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 DRY_RUN = os.getenv("DRY_RUN", "") == "1"
 
