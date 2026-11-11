@@ -1,7 +1,4 @@
-"""بوت أخبار الجزائر: يجمع الأخبار الرسمية والترندات وينشرها على صفحة فيسبوك.
-
-- أخبار المصادر الرسمية  -> نشر تلقائي.
-- الترندات               -> ترسل إلى تيليغرام وتنتظر موافقتك.
+"""بوت أخبار الجزائر: يجمع أخبار المصادر الرسمية وينشرها تلقائيًا على صفحة فيسبوك.
 
 يعمل كل مرة ثم يتوقف (مصمم لـ GitHub Actions). الحالة تُحفظ في state/state.json.
 """
@@ -9,7 +6,6 @@
 from __future__ import annotations
 
 import hashlib
-import html
 import json
 import os
 import re
@@ -31,12 +27,9 @@ CONFIG_FILE = ROOT / "config.yaml"
 FB_PAGE_ID = os.getenv("FB_PAGE_ID", "")
 FB_PAGE_TOKEN = os.getenv("FB_PAGE_TOKEN", "")
 FB_API_VERSION = os.getenv("FB_API_VERSION", "v26.0")
-TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 DRY_RUN = os.getenv("DRY_RUN", "") == "1"
 
-HT_NS = {"ht": "https://trends.google.com/trending/rss"}
 ARABIC_RE = re.compile(r"[؀-ۿ]")
 UA = {"User-Agent": "Mozilla/5.0 (dz-news-bot)"}
 NOW = datetime.now(timezone.utc)
@@ -53,16 +46,13 @@ def load_state() -> dict:
     else:
         s = {}
     s.setdefault("seen", {})        # بصمة الخبر -> وقت رؤيته
-    s.setdefault("pending", {})     # منشورات تنتظر الموافقة
     s.setdefault("posted_at", [])   # أوقات النشر التلقائي (للحدود)
-    s.setdefault("tg_offset", 0)
     return s
 
 
 def save_state(s: dict):
     cutoff = (NOW - timedelta(days=4)).timestamp()
     s["seen"] = {k: v for k, v in s["seen"].items() if v > cutoff}
-    s["pending"] = {k: v for k, v in s["pending"].items() if v.get("ts", 0) > cutoff}
     s["posted_at"] = [t for t in s["posted_at"] if t > (NOW - timedelta(days=1)).timestamp()]
     STATE_FILE.parent.mkdir(exist_ok=True)
     STATE_FILE.write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -163,32 +153,6 @@ def collect_official(cfg: dict) -> list[dict]:
     return out
 
 
-# ---------------------------------------------------------------- الترندات
-def collect_trends(cfg: dict) -> list[dict]:
-    tcfg = cfg["trends"]
-    data = fetch(f"https://trends.google.com/trending/rss?geo={tcfg['geo']}")
-    if not data:
-        return []
-    root = ET.fromstring(data)
-    trends = []
-    for it in root.iter("item"):
-        news = []
-        for n in it.findall("ht:news_item", HT_NS):
-            url = n.findtext("ht:news_item_url", "", HT_NS)
-            news.append({
-                "title": html.unescape(n.findtext("ht:news_item_title", "", HT_NS)),
-                "url": url,
-                "source": n.findtext("ht:news_item_source", "", HT_NS),
-                "known": any(domain_matches(domain_of(url), d) for d in tcfg["known_media"]),
-            })
-        trends.append({
-            "term": (it.findtext("title") or "").strip(),
-            "traffic": it.findtext("ht:approx_traffic", "", HT_NS),
-            "news": news,
-        })
-    return trends
-
-
 # ---------------------------------------------------------------- الصياغة
 SYSTEM_PROMPT = (
     "أنت محرر في صفحة أخبار جزائرية على فيسبوك. اكتب منشورًا قصيرًا بالعربية الفصحى "
@@ -219,8 +183,8 @@ def ai_rewrite(cfg: dict, facts: str) -> str | None:
         return None
 
 
-def compose(cfg: dict, headline: str, source: str, link: str, extra: str = "") -> str:
-    body = ai_rewrite(cfg, f"العنوان: {headline}\n{extra}".strip()) or f"📰 {headline}"
+def compose(cfg: dict, headline: str, source: str, link: str) -> str:
+    body = ai_rewrite(cfg, f"العنوان: {headline}") or f"📰 {headline}"
     tags = cfg["posting"].get("hashtags", "")
     return f"{body}\n\nالمصدر: {source}\n{link}\n\n{tags}".strip()
 
@@ -244,59 +208,6 @@ def fb_post(message: str, link: str | None = None) -> str | None:
         return pid
     log(f"  ! خطأ من فيسبوك: {r.status_code} {r.text[:300]}")
     return None
-
-
-# ---------------------------------------------------------------- تيليغرام
-def tg(method: str, **params) -> dict:
-    if not TG_TOKEN:
-        return {}
-    if DRY_RUN and method != "getUpdates":
-        log(f"  [تجربة] تيليغرام {method}: {str(params)[:400]}")
-        return {"ok": True}
-    try:
-        r = requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/{method}",
-                          json=params, timeout=30)
-        return r.json()
-    except Exception as e:
-        log(f"  ! خطأ تيليغرام: {e}")
-        return {}
-
-
-def tg_send_for_approval(key: str, text: str):
-    kb = {"inline_keyboard": [[{"text": "✅ انشر", "callback_data": f"ok:{key}"},
-                               {"text": "❌ تجاهل", "callback_data": f"no:{key}"}]]}
-    tg("sendMessage", chat_id=TG_CHAT_ID, text=text[:4000], reply_markup=kb,
-       disable_web_page_preview=True)
-
-
-def process_approvals(state: dict):
-    """يقرأ ضغطات الأزرار في تيليغرام منذ آخر تشغيل وينفذها."""
-    if not (TG_TOKEN and TG_CHAT_ID):
-        return
-    res = tg("getUpdates", offset=state["tg_offset"], timeout=0,
-             allowed_updates=["callback_query"])
-    for upd in res.get("result", []):
-        state["tg_offset"] = upd["update_id"] + 1
-        cq = upd.get("callback_query")
-        if not cq:
-            continue
-        chat = str(cq.get("message", {}).get("chat", {}).get("id", ""))
-        if chat != str(TG_CHAT_ID):
-            continue  # تجاهل أي شخص آخر
-        action, _, key = (cq.get("data") or "").partition(":")
-        item = state["pending"].pop(key, None)
-        msg = cq.get("message", {})
-        if not item:
-            tg("answerCallbackQuery", callback_query_id=cq["id"], text="انتهت صلاحية هذا المنشور")
-            continue
-        if action == "ok":
-            ok = fb_post(item["message"], item.get("link"))
-            note = "✅ تم النشر" if ok else "⚠️ فشل النشر، راجع سجل GitHub Actions"
-        else:
-            note = "❌ تم التجاهل"
-        tg("answerCallbackQuery", callback_query_id=cq["id"], text=note)
-        tg("editMessageText", chat_id=chat, message_id=msg.get("message_id"),
-           text=(msg.get("text") or "")[:3900] + f"\n\n{note}")
 
 
 # ---------------------------------------------------------------- التشغيل
@@ -330,46 +241,11 @@ def run_official(cfg: dict, state: dict):
             break  # لا نعلّم الخبر كمقروء حتى ينجح النشر
 
 
-def run_trends(cfg: dict, state: dict):
-    if not cfg["trends"].get("enabled"):
-        return
-    if not (TG_TOKEN and TG_CHAT_ID):
-        log("— الترندات: تيليغرام غير مضبوط، تم التخطي")
-        return
-    log("— الترندات")
-    sent = 0
-    for t in collect_trends(cfg):
-        if sent >= cfg["trends"]["max_per_run"]:
-            break
-        fp = "trend:" + fingerprint(t["term"])
-        if fp in state["seen"]:
-            continue
-        state["seen"][fp] = NOW.timestamp()
-        if not t["news"]:
-            continue  # ترند بلا خبر مرتبط: لا شيء يمكن التحقق منه
-        best = sorted(t["news"], key=lambda n: not n["known"])[0]
-        extra = "\n".join(f"- {n['title']} ({n['source']})" for n in t["news"][:3])
-        msg = compose(cfg, best["title"], best["source"], best["url"],
-                      extra=f"عناوين مرتبطة:\n{extra}")
-        key = fp.split(":")[1]
-        state["pending"][key] = {"message": msg, "link": best["url"], "ts": NOW.timestamp()}
-        sources = "\n".join(f"{'✅' if n['known'] else '⚠️'} {n['source']}: {n['title']}"
-                            for n in t["news"][:3])
-        tg_send_for_approval(
-            key,
-            f"🔥 ترند: {t['term']} ({t['traffic']} بحث)\n\nالمصادر:\n{sources}\n\n"
-            f"— المنشور المقترح —\n{msg}",
-        )
-        sent += 1
-
-
 def main():
     cfg = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8"))
     state = load_state()
     try:
-        process_approvals(state)
         run_official(cfg, state)
-        run_trends(cfg, state)
     finally:
         save_state(state)
     log("انتهى.")
