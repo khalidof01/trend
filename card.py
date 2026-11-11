@@ -14,11 +14,13 @@ FONT_MED = ROOT / "fonts" / "Tajawal-Bold.ttf"
 LOGO = ROOT / "assets" / "logo.png"  # اختياري: ضع شعار الصفحة هنا
 
 SIZE = 1080
-TOP = (178, 52, 0)           # برتقالي غامق
-BOTTOM = (255, 196, 0)       # أصفر
-DARK = (60, 22, 0)           # بني غامق للتفاصيل
+TOP = (88, 28, 160)          # بنفسجي
+BOTTOM = (30, 64, 175)       # أزرق
+DARK = (225, 225, 255)       # لون فاتح للتفاصيل
+RED = (220, 38, 38)          # شارة "أخبار الجزائر"
+GOLD = (255, 200, 61)        # اسم الصفحة
 WHITE = (255, 255, 255)
-SHADOW = (90, 28, 0)
+SHADOW = (20, 10, 60)
 
 HAS_RAQM = features.check("raqm")
 AR_MONTHS = ["جانفي", "فيفري", "مارس", "أفريل", "ماي", "جوان", "جويلية",
@@ -98,14 +100,14 @@ def make_card(headline: str, source: str, page_name: str, when: datetime | None 
         logo.thumbnail((96, 96))
         img.paste(logo, (right - logo.width, 70), logo)
         x = right - logo.width - 20
-    _draw_rtl(draw, x, 88, page_name, ImageFont.truetype(str(FONT_BOLD), 44), WHITE)
+    _draw_rtl(draw, x, 88, page_name, ImageFont.truetype(str(FONT_BOLD), 44), GOLD)
 
     # شارة "أخبار الجزائر"
     tag_font = ImageFont.truetype(str(FONT_MED), 32)
     tag = "أخبار الجزائر"
     tw = _width(draw, tag, tag_font)
-    draw.rounded_rectangle((right - tw - 48, 190, right, 250), radius=30, fill=DARK)
-    _draw_rtl(draw, right - 24, 202, tag, tag_font, BOTTOM)
+    draw.rounded_rectangle((right - tw - 48, 190, right, 250), radius=30, fill=RED)
+    _draw_rtl(draw, right - 24, 202, tag, tag_font, WHITE)
 
     # العنوان
     top, bottom = 300, 850
