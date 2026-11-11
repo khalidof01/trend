@@ -22,6 +22,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: مكتبات الخط العربي
+        run: sudo apt-get install -y --no-install-recommends libraqm0 libfribidi0 libharfbuzz0b >/dev/null
       - run: pip install -r requirements.txt
       - name: تشغيل البوت
         env:

@@ -203,18 +203,27 @@ def compose(cfg: dict, headline: str, source: str, link: str) -> str:
 
 
 # ---------------------------------------------------------------- فيسبوك
-def fb_post(message: str, link: str | None = None) -> str | None:
+def fb_post(message: str, link: str | None = None, image: bytes | None = None) -> str | None:
     if DRY_RUN:
-        log("  [تجربة] كان سيُنشر على فيسبوك:\n" + message)
+        log("  [تجربة] كان سيُنشر على فيسبوك" + (" مع بطاقة" if image else "") + ":\n" + message)
         return "dry-run"
     if not (FB_PAGE_ID and FB_PAGE_TOKEN):
         log("  ! FB_PAGE_ID أو FB_PAGE_TOKEN غير مضبوط")
         return None
+    base = f"https://graph.facebook.com/{FB_API_VERSION}/{FB_PAGE_ID}"
+    if image:
+        r = requests.post(f"{base}/photos",
+                          data={"caption": message, "access_token": FB_PAGE_TOKEN},
+                          files={"source": ("card.jpg", image, "image/jpeg")}, timeout=60)
+        if r.ok:
+            pid = r.json().get("post_id") or r.json().get("id")
+            log(f"  ✓ نُشر على فيسبوك مع بطاقة: {pid}")
+            return pid
+        log(f"  ! فشل نشر الصورة ({r.status_code} {r.text[:200]})، سيُنشر كرابط")
     data = {"message": message, "access_token": FB_PAGE_TOKEN}
     if link:
         data["link"] = link
-    r = requests.post(f"https://graph.facebook.com/{FB_API_VERSION}/{FB_PAGE_ID}/feed",
-                      data=data, timeout=30)
+    r = requests.post(f"{base}/feed", data=data, timeout=30)
     if r.ok:
         pid = r.json().get("id")
         log(f"  ✓ نُشر على فيسبوك: {pid}")
@@ -237,6 +246,7 @@ def can_auto_post(cfg: dict, state: dict, posted_this_run: int) -> bool:
 
 def run_official(cfg: dict, state: dict):
     log("— الأخبار الرسمية")
+    post_cfg = cfg["posting"]
     posted = 0
     for item in collect_official(cfg):
         fp = fingerprint(item["title"])
@@ -246,7 +256,15 @@ def run_official(cfg: dict, state: dict):
             log("  · تم بلوغ حد النشر، الباقي في التشغيل القادم")
             break
         msg = compose(cfg, item["title"], item["source"], item["link"])
-        if fb_post(msg, item["link"]):
+        image = None
+        if post_cfg.get("image_cards"):
+            try:
+                from card import make_card
+                image = make_card(item["title"], item["source"],
+                                  post_cfg.get("page_name", ""), item["date"])
+            except Exception as e:
+                log(f"  ! تعذر صنع البطاقة: {e}")
+        if fb_post(msg, item["link"], image):
             state["seen"][fp] = NOW.timestamp()
             state["posted_at"].append(NOW.timestamp())
             posted += 1
@@ -257,6 +275,9 @@ def run_official(cfg: dict, state: dict):
 def main():
     cfg = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8"))
     state = load_state()
+    if cfg["posting"].get("image_cards"):
+        from PIL import features
+        log("البطاقات المصممة: " + ("جاهزة ✓" if features.check("raqm") else "غير متاحة (raqm مفقود)"))
     try:
         run_official(cfg, state)
     finally:
