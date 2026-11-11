@@ -94,6 +94,17 @@ def fetch(url: str) -> bytes | None:
         return None
 
 
+def normalize_ar(t: str) -> str:
+    t = re.sub(r"[أإآ]", "ا", t)
+    t = t.replace("ة", "ه").replace("ى", "ي")
+    return re.sub(r"[ًٌٍَُِّْـ]", "", t)
+
+
+def is_algerian(title: str, keywords: list[str]) -> bool:
+    nt = normalize_ar(title)
+    return any(normalize_ar(k) in nt for k in keywords)
+
+
 # ---------------------------------------------------------------- الأخبار الرسمية
 def google_news_url(domain: str) -> str:
     q = urllib.parse.quote(f"site:{domain} when:1d")
@@ -144,6 +155,8 @@ def collect_official(cfg: dict) -> list[dict]:
             if it["source_name"] and title.endswith(" - " + it["source_name"]):
                 title = title[: -len(it["source_name"]) - 3].strip()
             if post_cfg.get("arabic_only") and not ARABIC_RE.search(title):
+                continue
+            if post_cfg.get("algeria_only") and not is_algerian(title, cfg.get("algeria_keywords") or []):
                 continue
             if it["date"] and NOW - it["date"] > max_age:
                 continue
