@@ -3,7 +3,12 @@ name: بوت الأخبار
 on:
   schedule:
     - cron: "8,38 * * * *"   # كل 30 دقيقة (في الدقيقة 7 و37 لتجنب ازدحام GitHub)
-  workflow_dispatch: {}       # زر تشغيل يدوي من تبويب Actions
+  workflow_dispatch:          # تشغيل يدوي أو من cron-job.org
+    inputs:
+      dry_run:
+        description: "تجربة بدون نشر (1)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -30,7 +35,7 @@ jobs:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          DRY_RUN: ${{ vars.DRY_RUN }}
+          DRY_RUN: ${{ inputs.dry_run || vars.DRY_RUN }}
         run: python bot.py
       - name: حفظ الحالة
         if: always()

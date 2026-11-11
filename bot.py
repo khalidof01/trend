@@ -189,6 +189,50 @@ def collect_official(cfg: dict) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------- نص الخبر
+def resolve_url(link: str) -> str:
+    """روابط Google News تحوّل إلى الخبر الأصلي؛ نفكّها للحصول على رابط الموقع."""
+    if "news.google.com" not in link:
+        return link
+    try:
+        from googlenewsdecoder import gnewsdecoder
+        r = gnewsdecoder(link, interval=1)
+        if r.get("status") and r.get("decoded_url"):
+            return r["decoded_url"]
+    except Exception as e:
+        log(f"  ! تعذر فك رابط Google News: {e}")
+    return link
+
+
+def article_lead(url: str, headline: str, max_chars: int) -> str:
+    """يجلب الخبر ويعيد فقرته الأولى (مقطوعة عند نهاية جملة)."""
+    if "news.google.com" in url:
+        return ""
+    try:
+        import trafilatura
+        html_doc = fetch(url)
+        if not html_doc:
+            return ""
+        text = trafilatura.extract(html_doc.decode("utf-8", "ignore"), include_comments=False,
+                                   include_tables=False, favor_precision=True) or ""
+    except Exception as e:
+        log(f"  ! تعذر استخراج نص الخبر: {e}")
+        return ""
+    head_norm = normalize_ar(headline).strip()
+    paras = [p.strip() for p in text.split("\n") if len(p.strip()) > 60]
+    paras = [p for p in paras if normalize_ar(p).strip() != head_norm]
+    if not paras:
+        return ""
+    lead = paras[0]
+    if len(lead) < 180 and len(paras) > 1:
+        lead += "\n" + paras[1]
+    if len(lead) > max_chars:
+        cut = lead[:max_chars]
+        end = max(cut.rfind("."), cut.rfind("،"), cut.rfind("؛"))
+        lead = (cut[:end + 1] if end > max_chars // 2 else cut.rsplit(" ", 1)[0]) + " ..."
+    return lead
+
+
 # ---------------------------------------------------------------- الصياغة
 SYSTEM_PROMPT = (
     "أنت محرر في صفحة أخبار جزائرية على فيسبوك. اكتب منشورًا قصيرًا بالعربية الفصحى "
@@ -219,8 +263,10 @@ def ai_rewrite(cfg: dict, facts: str) -> str | None:
         return None
 
 
-def compose(cfg: dict, headline: str, source: str, link: str) -> str:
-    body = ai_rewrite(cfg, f"العنوان: {headline}") or f"📰 {headline}"
+def compose(cfg: dict, headline: str, source: str, link: str, lead: str = "") -> str:
+    body = ai_rewrite(cfg, f"العنوان: {headline}\n{lead}".strip()) or f"📰 {headline}"
+    if lead and not (cfg["ai"].get("enabled") and ANTHROPIC_KEY):
+        body += "\n\n" + lead
     tags = cfg["posting"].get("hashtags", "")
     return f"{body}\n\nالمصدر: {source}\n{link}\n\n{tags}".strip()
 
@@ -258,6 +304,8 @@ def fb_post(message: str, link: str | None = None, image: bytes | None = None) -
 # ---------------------------------------------------------------- التشغيل
 def can_auto_post(cfg: dict, state: dict, posted_this_run: int) -> bool:
     p = cfg["posting"]
+    if DRY_RUN:
+        return posted_this_run < 3  # التجربة تعرض 3 أخبار بدون حدود الوقت
     if posted_this_run >= p["max_posts_per_run"]:
         return False
     if len(state["posted_at"]) >= p["max_posts_per_day"]:
@@ -278,7 +326,12 @@ def run_official(cfg: dict, state: dict):
         if not can_auto_post(cfg, state, posted):
             log("  · تم بلوغ حد النشر، الباقي في التشغيل القادم")
             break
-        msg = compose(cfg, item["title"], item["source"], item["link"])
+        link, lead = item["link"], ""
+        if post_cfg.get("full_text", True):
+            link = resolve_url(item["link"])
+            lead = article_lead(link, item["raw"], post_cfg.get("lead_max_chars", 600))
+            log(f"  · الرابط: {link[:90]} | نص الخبر: {'✓' if lead else '✗'}")
+        msg = compose(cfg, item["title"], item["source"], link, lead)
         image = None
         if post_cfg.get("image_cards"):
             try:
@@ -287,7 +340,7 @@ def run_official(cfg: dict, state: dict):
                                   post_cfg.get("page_name", ""), item["date"])
             except Exception as e:
                 log(f"  ! تعذر صنع البطاقة: {e}")
-        if fb_post(msg, item["link"], image):
+        if fb_post(msg, link, image):
             state["seen"][fp] = NOW.timestamp()
             state["posted_at"].append(NOW.timestamp())
             posted += 1
@@ -304,7 +357,8 @@ def main():
     try:
         run_official(cfg, state)
     finally:
-        save_state(state)
+        if not DRY_RUN:
+            save_state(state)
     log("انتهى.")
 
 
